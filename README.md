@@ -16,7 +16,7 @@ NS Logger - это бот для Telegram, который позволяет ц�
 1. Клонируйте репозиторий:
 
 ```bash
-git clone https://github.com/your-repo/ns-logger.git
+git clone https://github.com/ovcharenski/ns-logger.git
 cd ns-logger
 ```
 2. Создайте и активируйте виртуальное окружение:
@@ -65,7 +65,7 @@ pip install pyinstaller
 ```
 2. Соберите исполняемый файл:
 ```bash
-pyinstaller --onefile --windowed --icon=assets/icon.ico main.py
+pyinstaller --onefile --add-data ".env;." --additional-hooks-dir=. main.py
 ```
 3. Готовый EXE будет в папке `dist`
 
