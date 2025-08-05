@@ -358,3 +358,63 @@ class BotManagement:
             reply_markup=Keyboards.back_button()
         )
         self._set_state(chat_id, 'waiting_for_global_admins')
+
+    def handle_remove_bot(self, message: types.Message, bot_name: str):
+        """Обработка удаления бота"""
+        chat_id = message.chat.id
+        username = message.from_user.username
+
+        if username not in Config.ADMINS:
+            self.bot.send_message(chat_id, "⛔ У вас нет прав для выполнения этой команды.")
+            return
+
+        # Создаем клавиатуру подтверждения
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add(
+            types.KeyboardButton(f"✅ Да, удалить {bot_name}"),
+            types.KeyboardButton("❌ Отмена")
+        )
+
+        self.bot.send_message(
+            chat_id,
+            f"Вы уверены, что хотите удалить бота {bot_name}?",
+            reply_markup=markup
+        )
+        self._set_state(chat_id, 'confirm_bot_removal', {'bot_name': bot_name})
+
+    def handle_confirm_removal(self, message: types.Message):
+        """Обработка подтверждения удаления бота"""
+        chat_id = message.chat.id
+        state = self._get_state(chat_id)
+        bot_name = state.get('data', {}).get('bot_name')
+
+        if not bot_name:
+            self._clear_state(chat_id)
+            self.bot.send_message(
+                chat_id,
+                "Ошибка: не найдено имя бота.",
+                reply_markup=Keyboards.main_menu()
+            )
+            return
+
+        if message.text == f"✅ Да, удалить {bot_name}":
+            if db.remove_bot(bot_name):
+                self.bot.send_message(
+                    chat_id,
+                    f"✅ Бот {bot_name} успешно удален!",
+                    reply_markup=Keyboards.main_menu()
+                )
+            else:
+                self.bot.send_message(
+                    chat_id,
+                    f"❌ Не удалось удалить бота {bot_name}!",
+                    reply_markup=Keyboards.main_menu()
+                )
+        else:
+            self.bot.send_message(
+                chat_id,
+                "Удаление отменено.",
+                reply_markup=Keyboards.main_menu()
+            )
+
+        self._clear_state(chat_id)

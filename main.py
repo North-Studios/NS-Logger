@@ -146,9 +146,15 @@ def handle_admin_to_remove_input(message: Message):
 
 @bot.message_handler(func=lambda message: message.text.startswith("❌ Удалить "))
 def handle_remove_bot(message: Message):
-    """Обработка запроса удаления бота"""
+    """Обработка запроса на удаление бота"""
     bot_name = message.text.replace("❌ Удалить ", "")
     bot_management.handle_remove_bot(message, bot_name)
+
+@bot.message_handler(func=lambda message:
+    bot_management._get_state(message.chat.id).get('state') == 'confirm_bot_removal')
+def handle_confirm_removal(message: Message):
+    """Обработка подтверждения удаления"""
+    bot_management.handle_confirm_removal(message)
 
 @bot.message_handler(func=lambda message: message.text == "👥 Управление админами")
 def handle_admin_management(message: Message):
