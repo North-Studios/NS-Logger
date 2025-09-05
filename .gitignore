@@ -1,9 +1,6 @@
 .env
-*.log
-*.pyc
 __pycache__/
-bot_config.json
+data/
+logs/
+bots/
 .idea
-dist/
-build/
-*.spec

@@ -1,4 +1,0 @@
-BOT_TOKEN=your_token
-ADMINS=["your_username", "another_admin_username"]
-LOGS_DIR=./logs
-BOTS_DATA_FILE=./bots_data.json

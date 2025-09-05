@@ -1,85 +1,197 @@
-# 📝 NS Logger - Telegram Bot для управления логами ботов
-## 📌 Описание
-NS Logger - это бот для Telegram, который позволяет централизованно управлять логами других ваших ботов. Основные возможности:
+# 🤖 NS Logger Bot v3.1 (nsl-bot)
 
-- Просмотр логов в реальном времени
-- Скачивание файлов логов
-- Управление доступом администраторов
-- Гибкая система настроек
+Telegram bot for viewing and managing logs of other bots. Provides secure access to logs through a role and permission system.
 
-## ⚙️ Требования
-- Python 3.8+
-- Telegram аккаунт с правами администратора
-- Доступ к файлам логов ваших ботов
+---
 
-## 🛠 Установка
-1. Клонируйте репозиторий:
+## ✨ Features
+
+### 📊 Log Viewing
+
+* **View the last 20/50 lines** of logs from any available bot.
+* **Download full logs** as a file.
+* **Automatic update** of the list of available bots.
+
+### 👥 Roles and Access System
+
+* **Operator (operator)** — full access to all bots and logs.
+* **Global Admin (gadmin)** — access to all bots.
+* **Local Admin (ladmin)** — access only to assigned bots.
+* **User (user)** — basic access (viewing own info only).
+
+### 🔐 Security
+
+* **Permission checks** before each action.
+* **Unauthorized access protection** via username.
+* **Ban and warning system.**
+* **Action logging** for all events.
+
+### ⌨️ User-Friendly Interface
+
+* **Dynamic keyboard** with available bot buttons.
+* **Inline buttons** for quick access to functions.
+* **Automatic creation** of required directories and files.
+
+---
+
+## ⚙️ Installation and Run
+
+### Requirements
+
+* Python 3.8+
+* Telegram Bot Token
+
+### Installation
+
+1. Clone the project:
 
 ```bash
-git clone https://github.com/ovcharenski/ns-logger.git
-cd ns-logger
+git clone <repo_url>
+cd nsl-bot
 ```
-2. Создайте и активируйте виртуальное окружение:
 
-```bash
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-venv\Scripts\activate     # Windows
-```
-3. Установите зависимости:
+2. Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
-4. Создайте файл `.env` и настройте его:
 
-```ini
-BOT_TOKEN=ваш_токен_бота
-ADMINS=["ваш_username"]
-LOGS_DIR=./logs
-BOTS_DATA_FILE=./bots_data.json
+3. Create a `.env` file and configure parameters:
+
+```env
+NSL_TOKEN=your_telegram_bot_token
+DATA_DIR=data  # Directory for data (default: data)
+LOGS_DIR=logs  # Directory for logs (default: logs)
+MAX_WARN=3     # Maximum number of warnings
 ```
 
-## 🚀 Запуск
+4. Run the bot:
+
 ```bash
-python main.py
+python nsl-bot.py
 ```
-## 🎛 Основные команды
-- `/start` - начать работу с ботом
-- `📋 Список ботов` - показать всех подключенных ботов
-- `➕ Добавить бота` - добавить нового бота в систему
-- `👥 Управление админами` - управление правами доступа
-- `⚙️ Настройки` - глобальные настройки системы
 
-## 🖥 Интерфейс
-Бот использует интуитивно понятные reply-клавиатуры:
-- Главное меню
-- Меню действий с конкретным ботом
-- Меню управления администраторами
-- Меню настроек
+### Build as Executable (Optional)
 
-## 📦 Сборка в EXE (Windows)
-1. Установите pyinstaller:
+To create a standalone version:
+
 ```bash
-pip install pyinstaller
+pyinstaller --onefile --add-data ".env;." --additional-hooks-dir=. nsl-bot.py
 ```
-2. Соберите исполняемый файл:
-```bash
-pyinstaller --onefile --add-data ".env;." --additional-hooks-dir=. main.py
-```
-3. Готовый EXE будет в папке `dist`
 
-## 📂 Структура проекта
-```text
-ns-logger/
-├── main.py               # Основной файл бота
-├── config.py             # Конфигурация
-├── database.py           # Работа с данными
-├── keyboards.py          # Клавиатуры
-├── bot_management.py     # Управление ботами
-├── log_management.py     # Работа с логами
-├── logger.py             # Логирование
-├── .env                  # Настройки окружения
-├── requirements.txt      # Зависимости
-└── README.md             # Документация
+---
+
+## 🗃️ Data Structure
+
+### Configuration Files
+
 ```
+data/
+├── bots_data.json    # Info about bots and their local admins
+├── users.json        # User data (ranks, bans, warnings)
+└── admins.json       # Lists of operators and global admins
+```
+
+### File Formats
+
+**bots\_data.json**:
+
+```json
+{
+  "bot_name": {
+    "ladmins": ["username1", "username2"]
+  }
+}
+```
+
+**users.json**:
+
+```json
+{
+  "username": {
+    "id": 123456789,
+    "first_name": "Name",
+    "rank": "user",
+    "banned": false,
+    "warns": 0
+  }
+}
+```
+
+**admins.json**:
+
+```json
+{
+  "operators": ["operator_username"],
+  "global_admins": ["admin1", "admin2"]
+}
+```
+
+---
+
+## 🎮 Usage
+
+### Main Commands
+
+* **`/start`** — start working with the bot, get a keyboard with available bots.
+* **`/me`** — view your account and access rights info.
+
+### Working with the Interface
+
+1. **Select a bot** — click on a bot button (📊 BotName).
+2. **View logs** — use inline buttons to view the last 20 or 50 lines.
+3. **Download logs** — press "📥 Download logs" to get the full file.
+4. **Update list** — press "🔄 Refresh" to update the list of available bots.
+
+---
+
+## 🔧 Access Management
+
+### Add an Operator
+
+Manually add the username to the `operators` section in `admins.json`.
+
+### Add a Global Admin
+
+Manually add the username to the `global_admins` section in `admins.json`.
+
+### Assign a Local Admin
+
+Add the username under the `ladmins` section for the desired bot in `bots_data.json`.
+
+### Register a New User
+
+A user is automatically registered when using the `/start` command for the first time.
+
+---
+
+## 📊 Logging
+
+The bot logs all actions in detail:
+
+* `logs/nsl-bot.log` — logs of the NS Logger bot itself.
+* `logs/bot_name.log` — logs of other bots (should be created separately).
+
+---
+
+## 🚀 Highlights
+
+* **Automatic creation** of required files and directories.
+* **Error handling** during file read/write.
+* **Message overflow protection** (auto-trimming long logs).
+* **Permission check** for every action.
+* **Support for Russian-language interface.**
+
+---
+
+## 🆘 Support
+
+If issues occur:
+
+1. Check access rights in JSON files.
+2. Ensure log files exist and are readable.
+3. Check bot logs in `logs/nsl-bot.log`.
+
+---
+
+**Version:** 3.1
