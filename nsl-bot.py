@@ -1,6 +1,6 @@
 import os
-import json
 import logging
+import sqlite3
 from typing import Dict, List, Optional, Tuple
 import telebot
 from dotenv import load_dotenv
@@ -16,14 +16,11 @@ load_dotenv()
 TOKEN = os.getenv('NSL_TOKEN')  # Token from environment variable
 DATA_DIR = os.getenv('DATA_DIR', 'data')
 LOGS_DIR = os.getenv('LOGS_DIR', 'logs')
+DB_PATH = os.path.join(DATA_DIR, 'ns_system.db')
 
 # Create directories if they don't exist
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(LOGS_DIR, exist_ok=True)
-
-BOTS_DATA_PATH = os.path.join(DATA_DIR, 'bots_data.json')
-USERS_DATA_PATH = os.path.join(DATA_DIR, 'users.json')
-ADMINS_DATA_PATH = os.path.join(DATA_DIR, 'admins.json')
 
 # Initialize bot
 bot = telebot.TeleBot(TOKEN)
@@ -48,73 +45,149 @@ RANK_TEXT = {
 }
 
 
-def load_json(file_path: str) -> Dict:
-    """Load JSON data from file"""
+def get_db_connection():
+    """Get SQLite database connection"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_database():
+    """Initialize database with required tables"""
+    conn = get_db_connection()
     try:
-        if not os.path.exists(file_path):
-            # Create empty file if it doesn't exist
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump({}, f, ensure_ascii=False, indent=2)
-            return {}
+        # Check if tables already exist
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        if cursor.fetchone():
+            logger.info("Database already initialized")
+            return
 
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.warning(f"Error loading JSON from {file_path}: {e}. Creating new file.")
-        # Create empty file if there's an error
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump({}, f, ensure_ascii=False, indent=2)
-        return {}
+        logger.info("Initializing database...")
 
+        # Create tables (same structure as in the documentation)
+        conn.executescript('''
+            CREATE TABLE users (
+                username TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                first_name TEXT NOT NULL,
+                rank TEXT NOT NULL DEFAULT 'user',
+                banned BOOLEAN NOT NULL DEFAULT FALSE,
+                warns INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
 
-def save_json(file_path: str, data: Dict) -> bool:
-    """Save data to JSON file"""
-    try:
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        return True
+            CREATE TABLE bots (
+                name TEXT PRIMARY KEY,
+                exe_path TEXT NOT NULL,
+                username TEXT NOT NULL,
+                state BOOLEAN NOT NULL DEFAULT FALSE,
+                type TEXT NOT NULL DEFAULT 'Standard',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE bot_ladmins (
+                bot_name TEXT NOT NULL,
+                username TEXT NOT NULL,
+                PRIMARY KEY (bot_name, username),
+                FOREIGN KEY (bot_name) REFERENCES bots (name) ON DELETE CASCADE,
+                FOREIGN KEY (username) REFERENCES users (username) ON DELETE CASCADE
+            );
+
+            CREATE TABLE global_admins (
+                username TEXT PRIMARY KEY,
+                FOREIGN KEY (username) REFERENCES users (username) ON DELETE CASCADE
+            );
+
+            CREATE TABLE operators (
+                username TEXT PRIMARY KEY,
+                FOREIGN KEY (username) REFERENCES users (username) ON DELETE CASCADE
+            );
+
+            CREATE TABLE bans (
+                username TEXT PRIMARY KEY,
+                banned_by TEXT NOT NULL,
+                banned_at INTEGER NOT NULL,
+                ban_time INTEGER NOT NULL DEFAULT 0,
+                reason TEXT,
+                FOREIGN KEY (username) REFERENCES users (username) ON DELETE CASCADE
+            );
+
+            CREATE TABLE auth_codes (
+                code TEXT PRIMARY KEY,
+                username TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                used BOOLEAN NOT NULL DEFAULT FALSE,
+                FOREIGN KEY (username) REFERENCES users (username) ON DELETE CASCADE
+            );
+        ''')
+        conn.commit()
+        logger.info("Database initialized successfully")
+
     except Exception as e:
-        logger.error(f"Error saving JSON to {file_path}: {e}")
-        return False
+        logger.error(f"Error initializing database: {e}")
+        raise
+    finally:
+        conn.close()
 
 
 def get_user_rank(username: str) -> str:
-    """Get user rank from all data sources"""
-    users_data = load_json(USERS_DATA_PATH)
-    admins_data = load_json(ADMINS_DATA_PATH)
+    """Get user rank from database"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
 
-    # Check if user exists
-    if username not in users_data:
-        return "none"
+        # Check if user is operator
+        cursor.execute("SELECT 1 FROM operators WHERE username = ?", (username,))
+        if cursor.fetchone():
+            return 'operator'
 
-    # Check operators
-    if admins_data.get('operators') and username in admins_data['operators']:
-        return 'operator'
+        # Check if user is global admin
+        cursor.execute("SELECT 1 FROM global_admins WHERE username = ?", (username,))
+        if cursor.fetchone():
+            return 'gadmin'
 
-    # Check global admins
-    if admins_data.get('global_admins') and username in admins_data['global_admins']:
-        return 'gadmin'
+        # Get user's rank from users table
+        cursor.execute("SELECT rank FROM users WHERE username = ?", (username,))
+        result = cursor.fetchone()
+        return result['rank'] if result else 'none'
 
-    # Return user's rank from users.json
-    return users_data[username].get('rank', 'user')
+    except Exception as e:
+        logger.error(f"Error getting user rank for {username}: {e}")
+        return 'none'
+    finally:
+        conn.close()
 
 
 def get_user_bots(username: str) -> List[str]:
     """Get list of bots that user has access to"""
     user_rank = get_user_rank(username)
-    bots_data = load_json(BOTS_DATA_PATH)
 
-    # Operators and global admins have access to all bots
-    if user_rank in ['operator', 'gadmin']:
-        return list(bots_data.keys())
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
 
-    # Local admins have access only to specific bots
-    user_bots = []
-    for bot_name, bot_info in bots_data.items():
-        if username in bot_info.get('ladmins', []):
-            user_bots.append(bot_name)
+        # Operators and global admins have access to all bots
+        if user_rank in ['operator', 'gadmin']:
+            cursor.execute("SELECT name FROM bots")
+            return [row['name'] for row in cursor.fetchall()]
 
-    return user_bots
+        # Local admins have access only to specific bots
+        cursor.execute('''
+            SELECT b.name 
+            FROM bots b 
+            JOIN bot_ladmins bl ON b.name = bl.bot_name 
+            WHERE bl.username = ?
+        ''', (username,))
+
+        return [row['name'] for row in cursor.fetchall()]
+
+    except Exception as e:
+        logger.error(f"Error getting user bots for {username}: {e}")
+        return []
+    finally:
+        conn.close()
 
 
 def is_user_allowed(username: str, user_id: int) -> bool:
@@ -124,26 +197,36 @@ def is_user_allowed(username: str, user_id: int) -> bool:
         logger.warning(f"User without username (ID: {user_id}) tried to access the bot")
         return False
 
-    users_data = load_json(USERS_DATA_PATH)
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
 
-    # Users not in the system are not allowed
-    if username not in users_data:
-        logger.warning(f"User @{username} (ID: {user_id}) not found in system")
+        # Check if user exists and is not banned
+        cursor.execute('''
+            SELECT banned, rank FROM users WHERE username = ?
+        ''', (username,))
+
+        user_data = cursor.fetchone()
+        if not user_data:
+            logger.warning(f"User @{username} (ID: {user_id}) not found in system")
+            return False
+
+        if user_data['banned']:
+            logger.warning(f"Banned user @{username} (ID: {user_id}) tried to access the bot")
+            return False
+
+        # Regular users are not allowed
+        if user_data['rank'] == 'user':
+            logger.warning(f"Regular user @{username} (ID: {user_id}) tried to access the bot")
+            return False
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Error checking user access for {username}: {e}")
         return False
-
-    user_data = users_data[username]
-
-    # Banned users are not allowed
-    if user_data.get('banned', False):
-        logger.warning(f"Banned user @{username} (ID: {user_id}) tried to access the bot")
-        return False
-
-    # Regular users are not allowed
-    if user_data.get('rank', 'user') == 'user':
-        logger.warning(f"Regular user @{username} (ID: {user_id}) tried to access the bot")
-        return False
-
-    return True
+    finally:
+        conn.close()
 
 
 def get_log_lines(bot_name: str, num_lines: int) -> Optional[str]:
@@ -200,11 +283,40 @@ def create_bot_keyboard(bot_name: str) -> InlineKeyboardMarkup:
     return keyboard
 
 
+def register_user(username: str, user_id: int, first_name: str) -> bool:
+    """Register new user in database"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+
+        # Check if user already exists
+        cursor.execute("SELECT 1 FROM users WHERE username = ?", (username,))
+        if cursor.fetchone():
+            return True
+
+        # Insert new user
+        cursor.execute('''
+            INSERT INTO users (username, user_id, first_name, rank, banned, warns)
+            VALUES (?, ?, ?, 'user', FALSE, 0)
+        ''', (username, user_id, first_name))
+
+        conn.commit()
+        logger.info(f"Registered new user @{username} (ID: {user_id})")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error registering user @{username}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
 @bot.message_handler(commands=['start'])
 def handle_start(message: Message):
     """Handle /start command"""
     username = message.from_user.username
     user_id = message.from_user.id
+    first_name = message.from_user.first_name or "Unknown"
 
     logger.info(f"Received /start from @{username} (ID: {user_id})")
 
@@ -219,17 +331,12 @@ def handle_start(message: Message):
         return
 
     # Register new user if needed
-    users_data = load_json(USERS_DATA_PATH)
-    if username not in users_data:
-        users_data[username] = {
-            "id": user_id,
-            "first_name": message.from_user.first_name,
-            "rank": "user",
-            "banned": False,
-            "warns": 0
-        }
-        save_json(USERS_DATA_PATH, users_data)
-        logger.info(f"Registered new user @{username} (ID: {user_id})")
+    if not register_user(username, user_id, first_name):
+        bot.send_message(
+            message.chat.id,
+            "❌ Ошибка регистрации. Обратитесь к администратору."
+        )
+        return
 
     # Send welcome message with keyboard
     user_bots = get_user_bots(username)
@@ -267,41 +374,49 @@ def handle_me(message: Message):
         )
         return
 
-    # Get user data
-    users_data = load_json(USERS_DATA_PATH)
-    user_data = users_data.get(username, {})
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
 
-    # Prepare rank text
-    rank = user_data.get('rank', 'user')
-    rank_text = RANK_TEXT.get(rank, '👤 Пользователь')
+        # Get user data
+        cursor.execute('''
+            SELECT user_id, first_name, rank, banned, warns 
+            FROM users WHERE username = ?
+        ''', (username,))
 
-    # Prepare banned status
-    banned = user_data.get('banned', False)
-    banned_status = "✅ Нет" if not banned else "❌ Да"
+        user_data = cursor.fetchone()
+        if not user_data:
+            bot.send_message(message.chat.id, "❌ Пользователь не найден.")
+            return
 
-    # Prepare response based on rank
-    if rank in ['gadmin', 'operator']:
+        # Prepare rank text
+        rank = get_user_rank(username)  # Get actual rank with hierarchy
+        rank_text = RANK_TEXT.get(rank, '👤 Пользователь')
+
+        # Prepare banned status
+        banned_status = "✅ Нет" if not user_data['banned'] else "❌ Да"
         response = (
             "👤 Информация о пользователе\n\n"
             f"📧 Username: @{username}\n"
             f"👨‍💼 Ранг: {rank_text}\n"
-            f"🆔 ID: {user_data.get('id', 'N/A')}\n"
-            f"📛 Имя: {user_data.get('first_name', 'N/A')}"
+            f"🆔 ID: {user_data['user_id']}\n"
+            f"📛 Имя: {user_data['first_name']}"
         )
-    else:
-        max_warn = os.getenv('MAX_WARN', 3)
-        response = (
-            "👤 Информация о пользователе\n\n"
-            f"📧 Username: @{username}\n"
-            f"👨‍💼 Ранг: {rank_text}\n"
-            f"🆔 ID: {user_data.get('id', 'N/A')}\n"
-            f"📛 Имя: {user_data.get('first_name', 'N/A')}\n"
-            f"📊 Ограничения: {banned_status}\n"
-            f"💢 Предупреждения: {user_data.get('warns', 0)}/{max_warn}"
-        )
+        # Prepare response based on rank
+        if not rank in ['gadmin', 'operator']:
+            max_warn = int(os.getenv('MAX_WARN', 3))
+            response += (
+                f"\n📊 Ограничения: {banned_status}\n"
+                f"💢 Предупреждения: {user_data['warns']}/{max_warn}"
+            )
 
-    bot.send_message(message.chat.id, response)
+        bot.send_message(message.chat.id, response)
 
+    except Exception as e:
+        logger.error(f"Error in /me command for @{username}: {e}")
+        bot.send_message(message.chat.id, "❌ Ошибка получения информации.")
+    finally:
+        conn.close()
 
 
 @bot.message_handler(func=lambda message: message.text == "🔄 Обновить")
@@ -475,6 +590,9 @@ if __name__ == "__main__":
     logger.info("Starting NS Logger bot...")
     logger.info(f"Data directory: {DATA_DIR}")
     logger.info(f"Logs directory: {LOGS_DIR}")
+
+    # Initialize database
+    init_database()
 
     try:
         bot.infinity_polling()

@@ -1,6 +1,6 @@
-# 🤖 NS Logger Bot v3.1 (nsl-bot)
+# 🤖 NS Logger Bot v4.1 (nsl-bot)
 
-Telegram bot for viewing and managing logs of other bots. Provides secure access to logs through a role and permission system.
+Telegram bot for viewing and managing logs of other bots. Provides secure access to logs through a role and permission system with SQLite database backend.
 
 ---
 
@@ -31,6 +31,12 @@ Telegram bot for viewing and managing logs of other bots. Provides secure access
 * **Dynamic keyboard** with available bot buttons.
 * **Inline buttons** for quick access to functions.
 * **Automatic creation** of required directories and files.
+
+### 🗄️ Database Backend
+
+* **SQLite database** for reliable data storage
+* **Structured tables** for users, bots, permissions, and bans
+* **Automatic database initialization** on first run
 
 ---
 
@@ -81,51 +87,23 @@ pyinstaller --onefile --add-data ".env;." --additional-hooks-dir=. nsl-bot.py
 
 ---
 
-## 🗃️ Data Structure
+## 🗃️ Database Structure
 
-### Configuration Files
+### Database Schema
 
-```
-data/
-├── bots_data.json    # Info about bots and their local admins
-├── users.json        # User data (ranks, bans, warnings)
-└── admins.json       # Lists of operators and global admins
-```
+The bot uses SQLite with the following tables:
 
-### File Formats
+* **users** - User accounts with basic information
+* **bots** - Registered bot information
+* **bot_ladmins** - Local admin assignments
+* **global_admins** - Global administrator accounts
+* **operators** - System operator accounts
+* **bans** - User ban records
+* **auth_codes** - Authentication codes (for future use)
 
-**bots\_data.json**:
+### Automatic Initialization
 
-```json
-{
-  "bot_name": {
-    "ladmins": ["username1", "username2"]
-  }
-}
-```
-
-**users.json**:
-
-```json
-{
-  "username": {
-    "id": 123456789,
-    "first_name": "Name",
-    "rank": "user",
-    "banned": false,
-    "warns": 0
-  }
-}
-```
-
-**admins.json**:
-
-```json
-{
-  "operators": ["operator_username"],
-  "global_admins": ["admin1", "admin2"]
-}
-```
+The database is automatically initialized on first run with all required tables.
 
 ---
 
@@ -149,15 +127,36 @@ data/
 
 ### Add an Operator
 
-Manually add the username to the `operators` section in `admins.json`.
+Insert username into the `operators` table:
+
+```sql
+INSERT INTO operators (username) VALUES ('operator_username');
+```
 
 ### Add a Global Admin
 
-Manually add the username to the `global_admins` section in `admins.json`.
+Insert username into the `global_admins` table:
+
+```sql
+INSERT INTO global_admins (username) VALUES ('admin_username');
+```
 
 ### Assign a Local Admin
 
-Add the username under the `ladmins` section for the desired bot in `bots_data.json`.
+Insert record into the `bot_ladmins` table:
+
+```sql
+INSERT INTO bot_ladmins (bot_name, username) VALUES ('bot_name', 'admin_username');
+```
+
+### Register a New Bot
+
+Insert record into the `bots` table:
+
+```sql
+INSERT INTO bots (name, exe_path, username, state, type) 
+VALUES ('bot_name', '/path/to/exe', 'bot_username', FALSE, 'Standard');
+```
 
 ### Register a New User
 
@@ -176,11 +175,13 @@ The bot logs all actions in detail:
 
 ## 🚀 Highlights
 
-* **Automatic creation** of required files and directories.
-* **Error handling** during file read/write.
-* **Message overflow protection** (auto-trimming long logs).
-* **Permission check** for every action.
-* **Support for Russian-language interface.**
+* **Automatic database initialization** with proper table structure
+* **SQLite backend** for reliable data storage
+* **Role hierarchy system** with proper permission checking
+* **Error handling** during database operations
+* **Message overflow protection** (auto-trimming long logs)
+* **Permission check** for every action
+* **Support for Russian-language interface**
 
 ---
 
@@ -188,10 +189,11 @@ The bot logs all actions in detail:
 
 If issues occur:
 
-1. Check access rights in JSON files.
-2. Ensure log files exist and are readable.
-3. Check bot logs in `logs/nsl-bot.log`.
+1. Check database file permissions in the data directory
+2. Ensure log files exist and are readable
+3. Check bot logs in `logs/nsl-bot.log`
+4. Verify database structure using SQLite browser if needed
 
 ---
 
-**Version:** 3.1
+**Version:** 4.1
